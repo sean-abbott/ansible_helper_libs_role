@@ -1,0 +1,10 @@
+---
+- hosts: localhost
+  tasks:
+    - name: "run get_git_data"
+      get_git_data:
+        path: '/home/sean/workspace/puppet'
+      register: result
+
+    - debug:
+        var: result
