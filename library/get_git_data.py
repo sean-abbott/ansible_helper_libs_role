@@ -12,6 +12,21 @@ DOCUMENTATION = '''
 ---
 module: get_git_data
 short_description: get short hash, branch, and dirty from git
+description:
+    - This module grabs information from a git instance for use in your tasks.
+    - as of now, it collects current short hash, branch, and dirty status.
+version_added: "2.1"
+author: "Sean Abbott, @sean-abbott"
+notes:
+    - This is pretty...not complete
+requirements:
+    - git installed on the target computer and available on the path
+options:
+    path:
+        description:
+            - the path to the repository you'd like to check
+        required: true
+        default: null
 '''
 
 def get_branch_name():
