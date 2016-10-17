@@ -1,0 +1,11 @@
+---
+- hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: "run anscap"
+      anscap:
+        src: '/tmp/api.tar.gz'
+      register: result
+
+    - debug:
+        var: result

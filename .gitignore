@@ -1,0 +1,17 @@
+# vim ignores
+# swap
+[._]*.s[a-w][a-z]
+[._]s[a-w][a-z]
+# session
+Session.vim
+# temporary
+.netrwhist
+*~
+# auto-generated tag files
+tags
+
+# ansible ignores
+*.retry
+
+# python
+*.pyc
