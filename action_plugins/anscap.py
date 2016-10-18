@@ -29,7 +29,6 @@ class ActionModule(ActionBase):
             msg = "local source file {} does not exist".format(to_native(source))
             raise self.AnsCapError(msg)
 
-
     def run(self, tmp=None, task_vars=None):
         ''' handler for anscap operations '''
         if task_vars is None:
@@ -44,8 +43,12 @@ class ActionModule(ActionBase):
             result['msg'] = "src is required"
             return result
 
+        changed = False
+
         try:
+            # YELLOW might be worth checking to see if it's already there/md5
             self._check_source_ok()
+            self._transfer_file(source, '/tmp/{}'.format(os.path.basename(source)))
         except self.AnsCapError as e:
             result['failed'] = True
             result['msg'] = e.msg
@@ -56,4 +59,5 @@ class ActionModule(ActionBase):
                 tmp=tmp)
 
         result.update(module_return)
+        result['changed'] = result['changed'] and changed
         return result

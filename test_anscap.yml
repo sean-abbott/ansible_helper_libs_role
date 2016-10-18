@@ -4,7 +4,9 @@
   tasks:
     - name: "run anscap"
       anscap:
-        src: '/tmp/api.tar.gz'
+        src: '/tmp/build/api.tar.gz'
+        app_name: "api"
+        deploy_dir: "/tmp/api"
       register: result
 
     - debug:
