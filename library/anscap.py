@@ -2,11 +2,17 @@
 
 # batteries included
 import os
+import shutil
 import subprocess
+import tempfile
+
+from contextlib import contextmanager
+from filecmp import dircmp
 
 # ansible
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.pycompat24 import get_exception
+from ansible.errors import AnsibleError
 
 
 DOCUMENTATION = '''
@@ -39,12 +45,36 @@ options:
           - The base directory that you capstyle deploy to
         required: true
         default: null
+    scm_dirty:
+        description:
+          - True if the SCM source is currently dirty (i.e., under development)
+        required: false
+        default: null
+    scm_shorthash:
+        description:
+          - an scm commit hash or other identifier (will be used in the app directory)
+        required: false
+        default: null
+    timestamp:
+        description:
+          - timestamp for deploy.  provided by the action plugin on the host
+        required: true
+        default: (provided by action plugin)
     src:
         description:
           - The local path to a tarball you want to transfer
         required: true
         default: null
 '''
+
+@contextmanager
+def _runatpath(path):
+    orig_dir = os.getcwd()
+    try:
+        os.chdir(path)
+        yield
+    finally:
+        os.chdir(orig_dir)
 
 def ensure_deploy_dir(app_dir):
     ''' make sure deploy dir exists and is writable 
@@ -113,10 +143,63 @@ def get_current_working_dir(app_dir):
     else:
         return (True, False, '"current" directory in {} is not a link.'.format(app_dir))
 
-def untar_tarball_in_place():
-    #''' untar the tarball into the correctly timestamped directory '''
-    pass
+def untar_in_place(module):
+    ''' untar the tarball into the correctly timestamped directory 
+    
+        Parameters
+        ----------
+        tuple
+            str
+                source (either source filepath, or source filename)
+            str
+                version directory (this is the time-and-scm-stamp subdirectoy we
+                need to create. should be a subdirectory of app_dir)
 
+        Returns
+        -------
+        tuple
+            bool
+                failed (whether we failed)
+            bool
+                changed if we created anything
+            str
+                message - directory created, error message on fail, or '' on no change
+    '''
+    source = module.params['src']
+    app_dir = module.params['app_dir']
+    version_dir = module.params['version_dir']
+
+    source_filepath = os.path.join(tempfile.gettempdir(), os.path.basename(source))
+
+    tar_extract_cmd = ["tar", "xf", source_filepath]
+
+    if not os.path.isabs(version_dir):
+        raise AnsibleError("version directory is not absolute")
+
+    tmp_extract_dir = tempfile.mkdtemp()
+
+    with _runatpath(tmp_extract_dir):
+        rc, out, err = module.run_command(tar_extract_cmd)
+        if rc:
+            raise AnsibleError("Failed to extract file to tmp")
+
+    chown_cmd = _get_chown_cmd(module).append(tmp_extract_dir)
+    if chown_cmd:
+        rc, out, err = module.run_command(chown_cmd)
+        if rc:
+            raise AnsibleError("Attempting to chown extracted files failed.")
+
+    if os.path.exists(version_dir):
+        cur_new_comp = dircmp(tmp_extract_dir, version_dir)
+        if len(cur_new_comp.diff_files) == 0:
+            return (False, False, '')
+        
+        if module.params['force']:
+            shutil.copytree(tmp_extract_dir, version_dir)                
+            return (False, True, version_dir)
+            
+    shutil.copytree(tmp_extract_dir, version_dir)
+    return (False, True, version_dir)
 
 def update_current_links():
     pass
@@ -130,19 +213,63 @@ def rollback():
     pass
 
 
+def _get_version_stamp(params):
+    ''' construct the version stamp '''
+    scm_dirty = params.get('scm_dirty', False)
+    scm_shorthash = params.get('scm_shorthash', '')
+    
+    if scm_dirty and not scm_shorthash:
+        scm_stamp = ''
+    elif scm_dirty:
+        scm_stamp = '{}{}'.format(scm_shorthash, '_dirty')
+    else:
+        scm_stamp = scm_shorthash
+
+    return '{}_{}'.format(params['timestamp'], scm_stamp)
+
+
+def _get_chown_cmd(module):
+    ''' construct cmd for chowning extracted files '''
+    if module.params['owner']:
+        if module.params['group']:
+            cmd = ['chown', '-R', '{}:{}'.format(
+                module.params['owner'], module.params['group'])]
+        else:
+            cmd = ['chown', '-R', module.params['owner']]
+    elif module.params['group']:
+        cmd = ['chgrp', '-R', module.params['group']]
+    else:
+        cmd = []
+
+    return cmd
+
 def main():
 
     fields = {
         'app_name': {'required': True, 'type': 'str'},
         'deploy_dir': {'required': True, 'type': 'path'},
+        'scm_dirty': {'required': False, 'type': 'bool'},
+        'scm_shorthash': {'required': False, 'type': 'str'},
         'src': {'required': True, 'type': 'path'},
+        'timestamp': {'required': True, 'type': 'str'},
     }
     module = AnsibleModule(
         argument_spec=fields,
         add_file_common_args=True,
     )
     result = dict(changed=False)
+
+    if not os.path.abspath(module.params['deploy_dir']):
+        module.fail_json(msg="deploy_dir is not absolute path: {}".format(
+            module.params['deploy_dir']))
+
     app_dir = os.path.join(module.params['deploy_dir'], module.params['app_name'])
+    module.params['app_dir'] = app_dir
+
+    version_stamp = _get_version_stamp(module.params)
+    version_dir = os.path.join(app_dir, version_stamp)
+    module.params['version_dir'] = version_dir
+
     step_function_dict_list = [
             {
                 'func': ensure_deploy_dir,
@@ -153,6 +280,11 @@ def main():
                 'func': get_current_working_dir,
                 'input': app_dir,
                 'result_key': 'current_app_working_dir'
+            },
+            {
+                'func': untar_in_place,
+                'input': module,
+                'result_key': 'untar_directory'
             },
         ]
     for step in step_function_dict_list:

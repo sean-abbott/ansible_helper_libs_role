@@ -16,12 +16,6 @@ class ActionModule(ActionBase):
             self.msg = msg
 
 
-    def _get_git_facts(self):
-        get_git_args = {'path': self._task.args['src']}
-        return self._execute_module(module_name='get_git_data',
-                module_args=get_git_args)
-
-
     def _check_source_ok(self):
         ''' source must be a tarball and tar must be able to read it '''
         source = self._task.args['src']
@@ -29,14 +23,17 @@ class ActionModule(ActionBase):
             msg = "local source file {} does not exist".format(to_native(source))
             raise self.AnsCapError(msg)
 
+
     def run(self, tmp=None, task_vars=None):
         ''' handler for anscap operations '''
-        if task_vars is None:
-            task_vars = dict()
+        #if task_vars is None:
+        #    task_vars = dict()
 
         result = super(ActionModule, self).run(tmp, task_vars)
 
         source = self._task.args.get('src', None)
+        timestamp = time.strftime("%Y%m%d%H%M%S")
+        self._task.args['timestamp'] = timestamp)
 
         if (source is None):
             result['failed'] = True

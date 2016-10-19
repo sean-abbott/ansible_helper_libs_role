@@ -1,0 +1,7 @@
+---
+src: "/tmp/build/api.tar.gz"
+deploy_dir: "/tmp/api"
+app_name: "api_prod"
+scm_dirty: "true"
+scm_shorthash: abc123
+timestamp: '201610181100'

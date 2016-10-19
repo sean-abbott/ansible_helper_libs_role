@@ -7,7 +7,21 @@
         src: '/tmp/build/api.tar.gz'
         app_name: "api"
         deploy_dir: "/tmp/api"
+        scm_dirty: "false"
+        scm_shorthash: "abc123"
       register: result
 
     - debug:
         var: result
+
+    - name: "run anscap"
+      anscap:
+        src: '/tmp/build/api.tar.gz'
+        app_name: "api_dev"
+        deploy_dir: "/tmp/api_dev"
+        scm_dirty: "true"
+        scm_shorthash: "123abc"
+      register: dev_result
+
+    - debug:
+        var: dev_result
