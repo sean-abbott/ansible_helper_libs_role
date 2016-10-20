@@ -300,18 +300,30 @@ def main():
 
     version_stamp = _get_version_stamp(module.params)
     version_dir = os.path.join(app_dir, version_stamp)
+    failed, changed, msg = get_current_version_dir(app_dir)
+    if failed:
+        result['msg'] = msg
+        module.fail_json(**result)
     module.params['version_dir'] = version_dir
+    module.params['prev_version_dir'] = msg
+
+    prev_hash = ''
+    prev_dirty = False
+
+    if not module.params['scm_dirty'] and module.params['scm_shorthash']:
+        if not module.params['prev_version_dir'].endswith('dirty'):
+            prev_ver_list = module.params['prev_version_dir'].split('_')
+            if len(prev_ver_list) > 1 and prev_ver_list[1] == module.params['scm_shorthash']:
+                if not module.params['force']:
+                    result['msg'] = 'version has already been deployed. use force to force.'
+                    result['changed'] = False
+                    module.exit_json(**result)
 
     step_function_dict_list = [
             {
                 'func': ensure_deploy_dir,
                 'input': app_dir,
                 'result_key': 'created_deploy_dir'
-            },
-            {
-                'func': get_current_version_dir,
-                'input': app_dir,
-                'param_key': 'current_app_working_dir'
             },
             {
                 'func': untar_in_place,
@@ -334,8 +346,6 @@ def main():
             result['changed'] = True
             if 'result_key' in step:
                 result[step['result_key']] = msg
-        if 'param_key' in step:
-            module.params[step['param_key']] = msg
     module.exit_json(**result)
 
 

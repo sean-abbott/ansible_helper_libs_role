@@ -33,7 +33,7 @@ class ActionModule(ActionBase):
 
         source = self._task.args.get('src', None)
         timestamp = time.strftime("%Y%m%d%H%M%S")
-        self._task.args['timestamp'] = timestamp)
+        self._task.args['timestamp'] = timestamp
 
         if (source is None):
             result['failed'] = True
@@ -56,5 +56,5 @@ class ActionModule(ActionBase):
                 tmp=tmp)
 
         result.update(module_return)
-        result['changed'] = result['changed'] and changed
+        result['changed'] = result['changed'] or changed
         return result
