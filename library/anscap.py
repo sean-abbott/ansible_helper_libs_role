@@ -174,20 +174,20 @@ def untar_in_place(module):
     tar_extract_cmd = ["tar", "xf", source_filepath]
 
     if not os.path.isabs(version_dir):
-        raise AnsibleError("version directory is not absolute")
+            return (True, False, "version directory is not absolute") 
 
     tmp_extract_dir = tempfile.mkdtemp()
 
     with _runatpath(tmp_extract_dir):
         rc, out, err = module.run_command(tar_extract_cmd)
         if rc:
-            raise AnsibleError("Failed to extract file to tmp")
+            return (True, False, "Failed to extract tarfile. rc: {}, stdout: {}, stderr: {}".format(str(rc), out, err))
 
     chown_cmd = _get_chown_cmd(module).append(tmp_extract_dir)
     if chown_cmd:
         rc, out, err = module.run_command(chown_cmd)
         if rc:
-            raise AnsibleError("Attempting to chown extracted files failed.")
+            return (True, False, "Failed to set permissions. rc: {}, stdout: {}, stderr: {}".format(str(rc), out, err))
 
     if os.path.exists(version_dir):
         cur_new_comp = dircmp(tmp_extract_dir, version_dir)
@@ -201,8 +201,28 @@ def untar_in_place(module):
     shutil.copytree(tmp_extract_dir, version_dir)
     return (False, True, version_dir)
 
-def update_current_links():
-    pass
+def update_current_links(params):
+    ''' set the "current" link for app
+
+        Returns
+        -------
+        tuple
+            bool
+                failed (whether we failed)
+            bool
+                changed if we created anything
+            str
+                message - directory created, error message on fail, or '' on no change
+    '''
+    current_dir = os.path.join(params['app_dir'], 'current')
+    if os.path.exists(current_dir):
+        if os.path.islink(current_dir):
+            os.remove(current_dir)
+        else:
+            return (True, False, '"current" directory in {} is not a symlink.'.format(
+                app_dir))
+    os.symlink(params['version_dir'], current_dir)
+    return (False, True, current_dir)
 
 
 def restart_application():
@@ -285,6 +305,11 @@ def main():
                 'func': untar_in_place,
                 'input': module,
                 'result_key': 'untar_directory'
+            },
+            {
+                'func': update_current_links,
+                'input': module.params,
+                'result_key': 'current_dir'
             },
         ]
     for step in step_function_dict_list:
