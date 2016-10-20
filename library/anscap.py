@@ -121,7 +121,7 @@ def ensure_deploy_dir(app_dir):
     return (False, changed, created_dir)
 
 
-def get_current_working_dir(app_dir):
+def get_current_version_dir(app_dir):
     ''' get the current working directory for the app
 
         Returns
@@ -216,6 +216,8 @@ def update_current_links(params):
     '''
     current_dir = os.path.join(params['app_dir'], 'current')
     if os.path.exists(current_dir):
+        if os.path.realpath(current_dir) == params['version_dir']:
+            return (False, False, current_dir)
         if os.path.islink(current_dir):
             os.remove(current_dir)
         else:
@@ -224,13 +226,23 @@ def update_current_links(params):
     os.symlink(params['version_dir'], current_dir)
     return (False, True, current_dir)
 
+def rollback(module):
+    ''' rollback any changes '''
+    current_dir = os.path.join(params['app_dir'], 'current')
+    if os.path.exists(current_dir):
+        if os.path.islink(current_dir):
+            os.remove(current_dir)
+        else:
+            msg = "current directory {} is not a symlink!".format(current_dir)
+            msg += " Something went horribly wrong."
+            raise AnsibleError(msg)
+    if 'current_app_working_dir' in module.params:
+        if module.params['current_app_working_dir']:
+            os.symlink(module.params['current_app_working_dir'], current_dir)
 
-def restart_application():
-    pass
-
-
-def rollback():
-    pass
+    if 'version_dir' in module.params:
+        if os.path.exists(module.params['version_dir']):
+            shutil.rmtree(module.params['version_dir'])
 
 
 def _get_version_stamp(params):
@@ -297,9 +309,9 @@ def main():
                 'result_key': 'created_deploy_dir'
             },
             {
-                'func': get_current_working_dir,
+                'func': get_current_version_dir,
                 'input': app_dir,
-                'result_key': 'current_app_working_dir'
+                'param_key': 'current_app_working_dir'
             },
             {
                 'func': untar_in_place,
@@ -315,10 +327,15 @@ def main():
     for step in step_function_dict_list:
         failed, changed, msg = step['func'](step['input'])
         if failed:
-            module.fail_json(msg=msg)
+            result.update(rollback(module))
+            result['msg'] = msg
+            module.fail_json(**result)
         if changed:
             result['changed'] = True
-            result[step['result_key']] = msg
+            if 'result_key' in step:
+                result[step['result_key']] = msg
+        if 'param_key' in step:
+            module.params[step['param_key']] = msg
     module.exit_json(**result)
 
 
